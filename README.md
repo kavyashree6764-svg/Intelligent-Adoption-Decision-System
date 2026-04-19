@@ -40,4 +40,4 @@ Open index.html in browser
 ![Suggestions](screenshots/suggestions.png)
 
 ##  GitHub Link
-(Add your repo link)
+https://github.com/kavyashree6764-svg/Intelligent-Adoption-Decision-System
