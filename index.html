@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AI Adoption Decision System</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    font-family: Arial;
+    background: #0f172a;
+    color: white;
+    margin: 0;
+    padding: 20px;
+}
+
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.container {
+    display: flex;
+    gap: 30px;
+}
+
+.form-box, .result-box {
+    flex: 1;
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 10px;
+}
+
+input {
+    width: 100%;
+    padding: 8px;
+    margin: 8px 0;
+    border-radius: 5px;
+    border: none;
+}
+
+button {
+    width: 100%;
+    padding: 10px;
+    background: #22c55e;
+    border: none;
+    color: white;
+    font-weight: bold;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.card {
+    background: #334155;
+    padding: 15px;
+    margin: 10px 0;
+    border-radius: 8px;
+}
+
+.profile {
+    display: flex;
+    gap: 10px;
+}
+
+.profile div {
+    flex: 1;
+    background: #475569;
+    padding: 10px;
+    border-radius: 8px;
+}
+
+.approved { color: #22c55e; }
+.rejected { color: #ef4444; }
+.review { color: #facc15; }
+
+.progress {
+    background: #475569;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+.progress-bar {
+    height: 12px;
+    background: #22c55e;
+}
+
+ul {
+    padding-left: 20px;
+}
+
+/* Charts */
+.charts-container {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
+.chart-box {
+    flex: 1;
+    min-width: 300px;
+    max-width: 400px;
+    height: 300px;
+    background: #334155;
+    padding: 15px;
+    border-radius: 10px;
+}
+
+canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+</style>
+</head>
+
+<body>
+
+<h1>AI Adoption Decision Dashboard</h1>
+
+<div class="container">
+
+<div class="form-box">
+<h3>Enter Details</h3>
+
+<form id="form">
+Age Difference <input type="number" id="age_diff">
+Preference Match (0-1) <input type="number" step="0.1" id="preference">
+Income <input type="number" id="income">
+Verified (true/false) <input type="text" id="verified">
+Declared Income <input type="number" id="declared">
+Actual Income <input type="number" id="actual">
+Experience <input type="number" id="experience">
+
+<button type="submit">Analyze</button>
+</form>
+</div>
+
+<div class="result-box">
+<h3>Analysis Result</h3>
+<div id="output"></div>
+</div>
+
+</div>
+
+<script>
+let scoreChart, fraudChart;
+
+document.getElementById("form").addEventListener("submit", async function(e) {
+    e.preventDefault();
+
+    const age_diff = parseInt(document.getElementById("age_diff").value);
+    const preference = parseFloat(document.getElementById("preference").value);
+    const income = parseInt(document.getElementById("income").value);
+    const verified = document.getElementById("verified").value === "true";
+    const declared = parseInt(document.getElementById("declared").value);
+    const actual = parseInt(document.getElementById("actual").value);
+    const experience = parseInt(document.getElementById("experience").value);
+
+    const data = {
+        age_diff,
+        preference_match: preference,
+        income,
+        verified,
+        declared_income: declared,
+        actual_income: actual,
+        experience
+    };
+
+    const response = await fetch("http://127.0.0.1:5000/predict", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    const res = await response.json();
+
+    let decisionClass = "review";
+    if (res.decision?.includes("APPROVED")) decisionClass = "approved";
+    if (res.decision?.includes("REJECTED")) decisionClass = "rejected";
+
+    document.getElementById("output").innerHTML = `
+        <div class="card profile">
+            <div>
+                <h4>👤 Parent Profile</h4>
+                <p>Income: ${income}</p>
+                <p>Experience: ${experience} yrs</p>
+                <p>Verified: ${verified}</p>
+            </div>
+            <div>
+                <h4>👶 Child Profile</h4>
+                <p>Age Gap: ${age_diff}</p>
+                <p>Preference Match: ${preference}</p>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="${decisionClass}">${res.decision}</h2>
+            <p>${res.reason || ""}</p>
+        </div>
+
+        <div class="card">
+            <strong>Final Score: ${res.final_score}</strong>
+            <div class="progress">
+                <div class="progress-bar" style="width:${res.final_score}%"></div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3 style="text-align:center;">📊 Decision Visualization</h3>
+            <div class="charts-container">
+                <div class="chart-box">
+                    <canvas id="scoreChart"></canvas>
+                </div>
+                <div class="chart-box">
+                    <canvas id="fraudChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>🧠 Decision Insights</h3>
+            <ul>
+                ${(res.explanations || []).map(e => `<li>${e}</li>`).join("")}
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>📊 Explainability Breakdown</h3>
+            <ul>
+                ${Object.entries(res.contributions || {})
+                    .map(([k,v]) => `<li>${k}: ${v}</li>`).join("")}
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>📉 Impact Ranking</h3>
+            <ul>
+                ${(res.impact_ranking || [])
+                    .map(i => `<li>${i[0]} : ${i[1]}</li>`).join("")}
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>🧭 Decision Trace</h3>
+            <ul>
+                ${(res.decision_trace || [])
+                    .map(t => `<li>${t}</li>`).join("")}
+            </ul>
+        </div>
+
+        <div class="card">
+            <h3>🔮 What to Improve (Counterfactual)</h3>
+            <ul>
+                ${(res.counterfactual || [])
+                    .map(c => `<li>${c}</li>`).join("")}
+            </ul>
+        </div>
+    `;
+
+    // BAR CHART
+    if (scoreChart) scoreChart.destroy();
+    scoreChart = new Chart(document.getElementById("scoreChart"), {
+        type: 'bar',
+        data: {
+            labels: ['Compatibility', 'Financial', 'Background', 'ML'],
+            datasets: [{
+                label: 'Scores',
+                data: [
+                    res.scores?.compatibility || 0,
+                    res.scores?.financial || 0,
+                    res.scores?.background || 0,
+                    res.scores?.ml_confidence || 0
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false
+        }
+    });
+
+    // DOUGHNUT CHART
+    if (fraudChart) fraudChart.destroy();
+    fraudChart = new Chart(document.getElementById("fraudChart"), {
+        type: 'doughnut',
+        data: {
+            labels: ['Fraud Risk', 'Safe'],
+            datasets: [{
+                data: [res.fraud_risk || 0, 100 - (res.fraud_risk || 0)]
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '65%',
+            radius: '80%',
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+});
+</script>
+
+</body>
+</html>
